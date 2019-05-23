@@ -126,6 +126,15 @@ static float progress = 0.0f;
     self.activityCount++;
 }
 
+- (IBAction)cancelButton {
+    [SVProgressHUD setCancelButtonEnabled:true];
+    [SVProgressHUD setCancelButtonAction:^{
+        NSLog(@"Cancel tapped");
+    }];
+    [SVProgressHUD showProgress:0.3 status:@"Downloading..."];
+    self.activityCount++;
+}
+
 - (void)showSuccessWithStatus {
 	[SVProgressHUD showSuccessWithStatus:@"Great Success!"];
     self.activityCount++;

@@ -196,6 +196,15 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     [self sharedView].hapticsEnabled = hapticsEnabled;
 }
 
++ (void)setCancelButtonEnabled:(BOOL)cancelButtonEnabled {
+    [self sharedView].cancelButtonEnabled = cancelButtonEnabled;
+    [SVProgressHUD setDefaultMaskType:SVProgressHUDMaskTypeClear];
+}
+
++ (void)setCancelButtonAction:(void(^)(void))cancelButtonAction {
+    [self sharedView].cancelButtonAction = cancelButtonAction;
+}
+
 #pragma mark - Show Methods
 
 + (void)show {
@@ -424,6 +433,11 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         _maxSupportedWindowLevel = UIWindowLevelNormal;
         
         _hapticsEnabled = NO;
+
+        _cancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        [_cancelButton setTitle:NSLocalizedString(@"Cancel", nil) forState:UIControlStateNormal];
+        _cancelButtonEnabled = NO;
+        _cancelButtonAction = nil;
         
         // Accessibility support
         self.accessibilityIdentifier = @"SVProgressHUD";
@@ -453,6 +467,8 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         labelHeight = ceilf(CGRectGetHeight(labelRect));
         labelWidth = ceilf(CGRectGetWidth(labelRect));
     }
+
+
     
     // Calculate hud size based on content
     // For the beginning use default values, these
@@ -476,6 +492,10 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     if(self.statusLabel.text && (imageUsed || progressUsed)){
         // Add spacing if both content and label are used
         hudHeight += SVProgressHUDLabelSpacing;
+    }
+
+    if (self.cancelButtonEnabled) {
+        hudHeight += 30.0;
     }
     
     // Update values on subviews
@@ -507,7 +527,11 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
     self.statusLabel.frame = labelRect;
     self.statusLabel.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), centerY);
-    
+
+    if (self.cancelButtonEnabled) {
+        self.cancelButton.frame = CGRectMake(0, CGRectGetMaxY(self.statusLabel.frame) + 10.0, CGRectGetWidth(self.hudView.bounds), 20);
+    }
+
     [CATransaction commit];
 }
 
@@ -539,6 +563,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 - (void)updateViewHierarchy {
     // Add the overlay to the application window if necessary
     if(!self.controlView.superview) {
+
         if(self.containerView){
             [self.containerView addSubview:self.controlView];
         } else {
@@ -725,13 +750,20 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 #pragma mark - Event handling
 
 - (void)controlViewDidReceiveTouchEvent:(id)sender forEvent:(UIEvent*)event {
+    UITouch *touch = event.allTouches.anyObject;
+    CGPoint touchLocation = [touch locationInView:self];
+
+    CGRect cancelFrame = [self.cancelButton convertRect:self.cancelButton.bounds toView:self];
+    if(CGRectContainsPoint(cancelFrame, touchLocation) && self.cancelButtonEnabled) {
+        [self cancelButtonTapped:self.cancelButton];
+        return;
+    }
+
     [[NSNotificationCenter defaultCenter] postNotificationName:SVProgressHUDDidReceiveTouchEventNotification
                                                         object:self
                                                       userInfo:[self notificationUserInfo]];
     
-    UITouch *touch = event.allTouches.anyObject;
-    CGPoint touchLocation = [touch locationInView:self];
-    
+
     if(CGRectContainsPoint(self.hudView.frame, touchLocation)) {
         [[NSNotificationCenter defaultCenter] postNotificationName:SVProgressHUDDidTouchDownInsideNotification
                                                             object:self
@@ -766,6 +798,16 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
             strongSelf.statusLabel.hidden = status.length == 0;
             strongSelf.statusLabel.text = status;
             strongSelf.progress = progress;
+
+            strongSelf.cancelButton.hidden = !strongSelf.cancelButtonEnabled;
+            [strongSelf.cancelButton setUserInteractionEnabled: strongSelf.cancelButtonEnabled];
+
+            if (strongSelf.cancelButtonEnabled) {
+                [strongSelf.hudView.contentView addSubview:strongSelf.cancelButton];
+                [strongSelf.cancelButton addTarget:self
+                                            action:@selector(cancelButtonTapped:)
+                                  forControlEvents:UIControlEventTouchUpInside];
+            }
             
             // Choose the "right" indicator depending on the progress
             if(progress >= 0) {
@@ -779,6 +821,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
                 if(!strongSelf.backgroundRingView.superview){
                     [strongSelf.hudView.contentView addSubview:strongSelf.backgroundRingView];
                 }
+                
                 
                 // Set progress animated
                 [CATransaction begin];
@@ -864,6 +907,16 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
             }
         }
     }];
+}
+
+- (void)cancelButtonTapped:(id)sender {
+    if (_cancelButtonAction != nil) {
+        _cancelButtonAction();
+    }
+
+    _cancelButtonEnabled = false;
+    self.defaultMaskType = SVProgressHUDMaskTypeNone;
+    [self dismiss];
 }
 
 - (void)fadeIn:(id)data {
@@ -1284,6 +1337,13 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     _statusLabel.font = self.font;
 
     return _statusLabel;
+}
+
+- (UIButton*)cancelButton {
+    [_cancelButton setBackgroundColor: [UIColor clearColor]];
+    [_cancelButton setTitleColor:self.tintColor forState:UIControlStateNormal];
+    [_cancelButton.titleLabel setFont:self.font];
+    return _cancelButton;
 }
 
 - (UIImageView*)imageView {
